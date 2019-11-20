@@ -89,29 +89,10 @@ class OktaAuthenticator:
 
   @capture_error
   def post_auth(self, p):
-    params = dict(i for i in p)
-    user = params['User-Name']
-
-    if params['EAP-Type'] == 'TLS':
-      self.info_log('Post Authentication: user {}: Processing EAP TLS client certificate', user)
-      return radiusd.RLM_MODULE_OK
-
-    elif params['EAP-Type'] == 'GTC':
-      self.info_log('Post Authentication: user {}: Processing EAP GTC', user)
-      # For dynamic VLAN...
-      # if params['User-Name'] == 'ben.hecht':
-      #   vlan = '1'
-      # return (radiusd.RLM_MODULE_OK,
-      #         (
-      #           ('Tunnel-Private-Group-Id', vlan),
-      #           ('Tunnel-Type', 'VLAN'),
-      #           ('Tunnel-Medium-Type', 'IEEE-802'),
-      #         ), ())
-      return radiusd.RLM_MODULE_OK
-
-    elif params['EAP-Type'] == 'PEAP' or params['EAP-Type'] == 'TTLS':
-      self.info_log('Post Authentication: user {}: Processing EAP {}', user, params['EAP-Type'])
-      return radiusd.RLM_MODULE_OK
+    if hasattr(self, 'post_auth_hook'):
+      self.debug_log("has post_auth_hook: deferring to it")
+      return capture_error(self.post_auth_hook)(p)
+    return radiusd.RLM_MODULE_OK
 
 
 # compatibility shims for people directly using this module.
