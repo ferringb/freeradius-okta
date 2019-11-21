@@ -27,8 +27,8 @@ def capture_error(func):
   f.__name__ = func.__name__
   return f
 
-class OktaAuthenticator:
 
+class OktaAuthenticator:
   """
   Freeradius okta authenticator.
   """
