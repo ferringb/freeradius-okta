@@ -62,6 +62,9 @@ class OktaAuthenticator:
   def info_log(self, *args, **kwargs):
     return _log(radiusd.L_INFO, *args, **kwargs)
 
+  def auth_headers(self):
+    return {'Authorization': 'SSWS {}'.format(self.apitoken)}
+
   @capture_error
   def authenticate(self, p):
     attributes = dict(p)
@@ -74,9 +77,8 @@ class OktaAuthenticator:
     self.auth_log('Authenticating: {}', username)
 
     url = 'https://{}/api/v1/authn'.format(self.org)
-    headers = {'Authorization': 'SSWS {}'.format(self.apitoken)}
     payload = {'username': username, 'password': password}
-    r = requests.post(url, json=payload, headers=headers)
+    r = requests.post(url, json=payload, headers=headers, self.auth_headers())
 
     result = radiusd.RLM_MODULE_OK if r.status_code == 200 else radiusd.RLM_MODULE_REJECT
     self.debug_log('Authentication result: status={}, result={}', r.status_code, result)
