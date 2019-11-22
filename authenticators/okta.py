@@ -8,6 +8,7 @@ import requests
 import radiusd
 import functools
 import os
+import re
 
 def _log(level, message, *args, **kwargs):
   if args or kwargs:
@@ -40,16 +41,24 @@ class OktaAuthenticator:
 
     :param env_prefix: If given, look for ${PREFIX}_OKTA.* variables.  If not given, just look for OKTA_.*
     """
-    def f(key, prefix='{}_'.format(prefix) if prefix is not None else ''):
+    prefix = '' if prefix is None else '{}_'.format(prefix)
+    def f(key, required=True):
       key = '{}OKTA_{}'.format(prefix, key)
       try:
         return os.environ[key]
       except KeyError:
-        raise KeyError("environment variable {} isn't defined, but is mandatory".format(key))
-    return cls(domain=f('DOMAIN'), org=f('ORG'), apitoken=f('APITOKEN'))
+        if required:
+          raise KeyError("environment variable {} isn't defined, but is mandatory".format(key))
+      return None
 
-  def __init__(self, domain, org, apitoken):
-    self.domain = domain
+    return cls(
+        default_email_domain=f('DEFAULT_EMAIL_DOMAIN', False),
+        org=f('ORG'),
+        apitoken=f('APITOKEN')
+    )
+
+  def __init__(self, org, apitoken, default_email_domain=None):
+    self.default_email_domain = default_email_domain
     self.org = org
     self.apitoken = apitoken
 
@@ -71,14 +80,16 @@ class OktaAuthenticator:
     username = attributes['User-Name']
     password = attributes['User-Password']
 
-    if not username.endswith('@{}'.format(self.domain)):
-      username = username + '@{}'.format(self.domain)
+    if self.default_email_domain and not re.match('^\w+([\+\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$', username):
+      # it's not an email address and we have a default, so enforce ours.
+      self.debug_log('Authenticating: {} user lacks an email domain, applying the default of {}'.format(username, self.default_email_domain))
+      username += '@{}'.format(self.default_email_domain)
 
     self.auth_log('Authenticating: {}', username)
 
     url = 'https://{}/api/v1/authn'.format(self.org)
     payload = {'username': username, 'password': password}
-    r = requests.post(url, json=payload, headers=headers, self.auth_headers())
+    r = requests.post(url, json=payload, headers=self.auth_headers())
 
     result = radiusd.RLM_MODULE_OK if r.status_code == 200 else radiusd.RLM_MODULE_REJECT
     self.debug_log('Authentication result: status={}, result={}', r.status_code, result)
