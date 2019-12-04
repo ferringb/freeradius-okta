@@ -42,25 +42,27 @@ class OktaAuthenticator:
     :param env_prefix: If given, look for ${PREFIX}_OKTA.* variables.  If not given, just look for OKTA_.*
     """
     prefix = '' if prefix is None else '{}_'.format(prefix)
-    def f(key, required=True):
+    def f(key, required=True, default=None):
       key = '{}OKTA_{}'.format(prefix, key)
       try:
         return os.environ[key]
       except KeyError:
         if required:
           raise KeyError("environment variable {} isn't defined, but is mandatory".format(key))
-      return None
+      return default
 
     return cls(
         default_email_domain=f('DEFAULT_EMAIL_DOMAIN', False),
         org=f('ORG'),
-        apitoken=f('APITOKEN')
+        apitoken=f('APITOKEN'),
+        module_name=f('MODULE_NAME', False, __name__),
     )
 
-  def __init__(self, org, apitoken, default_email_domain=None):
+  def __init__(self, org, apitoken, default_email_domain=None, module_name='okta'):
     self.default_email_domain = default_email_domain
     self.org = org
     self.apitoken = apitoken
+    self.module_name = module_name
 
   def debug_log(self, *args, **kwargs):
     return _log(radiusd.L_DBG, *args, **kwargs)
@@ -80,11 +82,6 @@ class OktaAuthenticator:
     username = attributes['User-Name']
     password = attributes['User-Password']
 
-    if self.default_email_domain and not re.match('^\w+([\+\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$', username):
-      # it's not an email address and we have a default, so enforce ours.
-      self.debug_log('Authenticating: {} user lacks an email domain, applying the default of {}'.format(username, self.default_email_domain))
-      username += '@{}'.format(self.default_email_domain)
-
     self.auth_log('Authenticating: {}', username)
 
     url = 'https://{}/api/v1/authn'.format(self.org)
@@ -97,8 +94,20 @@ class OktaAuthenticator:
 
   @capture_error
   def authorize(self, p):
-    self.auth_log('Authorize: {}', dict(p)['User-Name'])
-    return radiusd.RLM_MODULE_OK
+    attributes = dict(p)
+    username = attributes.get('User-Name')
+    if username is not None:
+      if re.match('^\w+([\+\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$', username):
+        return _radius_response(radiusd.RLM_MODULE_OK, config={'Auth-Type': self.module_name})
+      if self.default_email_domain:
+        # it's not an email address and we have a default, so enforce ours and claim this auth for ourselves.
+        self.debug_log('Authorizing: {} user lacks an email domain, applying the default of {}'.format(username, self.default_email_domain))
+        username += '@{}'.format(self.default_email_domain)
+        return _radius_response(radiusd.RLM_MODULE_OK, config={'Auth-Type': self.module_name, 'User-Name': username})
+      self.debug_log("Authorize: {} we don't know what to do with", username)
+      return _radius_response(radiusd.RLM_MODULE_NOOP)
+    self.debug_log("Authorize: no user name provided")
+    return _radius_response(radiusd.RLM_MODULE_NOOP)
 
   @capture_error
   def post_auth(self, p):
