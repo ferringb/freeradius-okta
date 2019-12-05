@@ -47,13 +47,15 @@ class OktaAuthenticator:
 
   @classmethod
   @capture_error
-  def from_env(cls, prefix=None):
+  def from_env(cls, prefix=None, **kwargs):
     """Create an authenticator from environment variables
 
     :param env_prefix: If given, look for ${PREFIX}_OKTA.* variables.  If not given, just look for OKTA_.*
     """
     prefix = '' if prefix is None else '{}_'.format(prefix)
-    def f(key, required=True, default=None):
+    def f(key, required=True, default=None, overrides=kwargs):
+      if key.lower() in overrides:
+        return overrides[key.lower()]
       key = '{}OKTA_{}'.format(prefix, key)
       try:
         return os.environ[key]
