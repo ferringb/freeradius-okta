@@ -5,15 +5,32 @@
 #
 
 import requests
-import radiusd
 import functools
 import os
 import re
+
+# if OKTA_DEVELOPMENT_MODE is in the env, then we're being invoked outside of
+# freeradius- provide compatibility mock's to make development simpler.
+if os.environ.get("OKTA_DEVELOPMENT_MODE"):
+  class RadiusdMock:
+
+    def __getattr__(self, key):
+      return key
+
+    @staticmethod
+    def radlog(level, message):
+      print("radlog({!r}, {!r})".format(level, message))
+
+  radiusd = RadiusdMock()
+else:
+  import radiusd
+
 
 def _log(level, message, *args, **kwargs):
   if args or kwargs:
     message = message.format(*args, **kwargs)
   radiusd.radlog(level, "Okta Backend: {}".format(message))
+
 
 def capture_error(func):
   def f(*args, **kwargs):
@@ -206,6 +223,7 @@ def inject_hooks(variable_scope, object, force=()):
   for hook in KNOWN_HOOKS.intersection(dir(object)).union(force):
     variable_scope[hook] = capture_error(getattr(object, hook))
 
+
 def inject_hooks_lazy(variable_scope, invokable, hooks, force=()):
   """Mutate the given variable scope, adding shims so that rlm_python can invoke it.
 
@@ -219,6 +237,7 @@ def inject_hooks_lazy(variable_scope, invokable, hooks, force=()):
       return getattr(invokable(), hook)(p)
     shim.__name__ = hook
     variable_scope[hook] = capture_error(shim)
+
 
 # compatibility shims for people directly using this module directly.
 inject_hooks_lazy(
