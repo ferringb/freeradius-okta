@@ -91,7 +91,6 @@ class OktaAuthenticator:
   def auth_headers(self):
     return {'Authorization': 'SSWS {}'.format(self.apitoken)}
 
-  @capture_error
   def authenticate(self, p):
     attributes = dict(p)
     username = attributes['User-Name']
@@ -112,7 +111,6 @@ class OktaAuthenticator:
       return _radius_response(radiusd.RLM_MODULE_OK)
     return _radius_response(radiusd.RLM_MODULE_REJECT)
 
-  @capture_error
   def authenticate_mfa(self, p):
     attributes = dict(p)
     username = attributes['User-Name']
@@ -168,7 +166,6 @@ class OktaAuthenticator:
     self.debug_log("MFA Authentication: user {} exhausted all factor options", username)
     return _radius_response(radiusd.RLM_MODULE_REJECT, {'Reply-Message':'no factor could be verified'})
 
-  @capture_error
   def authorize(self, p):
     attributes = dict(p)
     username = attributes.get('User-Name')
@@ -185,23 +182,41 @@ class OktaAuthenticator:
     self.debug_log("Authorize: no user name provided")
     return _radius_response(radiusd.RLM_MODULE_NOOP)
 
-  @capture_error
-  def post_auth(self, p):
-    if hasattr(self, 'post_auth_hook'):
-      self.debug_log("has post_auth_hook: deferring to it")
-      return capture_error(self.post_auth_hook)(p)
-    return radiusd.RLM_MODULE_OK
 
+# This is the known hooks that Rlm_python can invoke; this list should be kept in sync
+# with https://github.com/FreeRADIUS/freeradius-server/blob/master/src/modules/rlm_python/rlm_python.c
+KNOWN_HOOKS = frozenset([
+    'authorize', 'authenticate', 'instantiate', 'preacct', 'accounting',
+    'pre_proxy', 'post_proxy', 'post_auth', 'recv_coa', 'send_coa', 'detach'
+])
 
-# compatibility shims for people directly using this module.
-def authenticate(p):
-  return OktaAuthenticator.from_env().authenticate(p)
+def inject_hooks(variable_scope, object, force=()):
+  """Mutate the given variable scope, adding shims so that rlm_python can invoke it.
 
-def authenticate_mfa(p):
-  return OktaAuthenticator.from_env().authenticate_mfa(p)
+  Said another way, if the object (or module) passed in has an 'authenticate'- then add
+  a redirect in variable_scope that invokes this.
+  """
+  for hook in set(KNOWN_HOOKS).intersection(object).union(force):
+    variable_scope[hook] = capture_error(getattr(object, hook))
 
-def authorize(p):
-  return OktaAuthenticator.from_env().authorize(p)
+def inject_hooks_lazy(variable_scope, invokable, hooks, force=()):
+  """Mutate the given variable scope, adding shims so that rlm_python can invoke it.
 
-def post_auth(p):
-  return OktaAuthenticator.from_env().post_auth(p)
+  This is akin to inject_hooks, but allows lazy instantiation of the object.  This
+  is primarily useful for the raw okta module- we need to delay env parsing until
+  invocation since the end user may not be using env variables (they may just be using
+  a mod-config instantiation directly).
+  """
+  for hook in set(hooks).union(force):
+    def shim(p, hook=hook):
+      return getattr(invokable(), hook)(p)
+    shim.__name__ = hook
+    variable_scope[hook] = capture_error(shim)
+
+# compatibility shims for people directly using this module directly.
+inject_hooks_lazy(
+    locals(),
+    OktaAuthenticator.from_env,
+    KNOWN_HOOKS.intersection(dir(OktaAuthenticator)),
+    force=['authenticate_mfa'],
+)
