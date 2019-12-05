@@ -87,6 +87,12 @@ class OktaAuthenticator:
   def info_log(self, *args, **kwargs):
     return _log(radiusd.L_INFO, *args, **kwargs)
 
+  def okta_request(self, method_type, uri, *args, **kwargs):
+    headers = kwargs['headers'] = kwargs.get('headers', {}).copy()
+    headers.update(self.auth_headers)
+    func = getattr(requests, method_type.lower())
+    return func('https://{}/{}'.format(self.org, uri.lstrip('/')), *args, **kwargs)
+
   @property
   def auth_headers(self):
     return {'Authorization': 'SSWS {}'.format(self.apitoken)}
@@ -98,9 +104,8 @@ class OktaAuthenticator:
 
     self.auth_log('Authenticating: {}', username)
 
-    url = 'https://{}/api/v1/authn'.format(self.org)
     payload = {'username': username, 'password': password}
-    r = requests.post(url, json=payload, headers=self.auth_headers)
+    r = self.okta_request('post', '/api/v1/authn', json=dict(username=username, password=password))
 
     self.debug_log('Authentication result: status={}', r.status_code)
     data = r.json()
@@ -119,14 +124,14 @@ class OktaAuthenticator:
 
     if user_id is None:
       self.debug_log("MFA Authentication: querying user id for user {}.  Consider enabling OKTA_USER_ID_ATTR to optimize this away", username)
-      response = requests.get('https://{}/api/v1/users/{}'.format(self.org, username), headers=self.auth_headers)
+      response = self.okta_request('get', '/api/v1/users/{}'.format(username))
       if response.status_code != 200:
         self.auth_log("MFA Authentication: user {} is unknown to okta", username)
       user_id = response.json()['id']
       self.debug_log("MFA Authentication: user {} is user-id {}", username, user_id)
 
     # get the factors allowed.
-    response = requests.get('https://{}/api/v1/users/{}/factors'.format(self.org, user_id), headers=self.auth_headers)
+    response = self.okta_request('get', '/api/v1/users/{}/factors'.format(user_id))
     # this is a list of factors
     if response.status_code == 404:
       self.info_log("MFA Authentication: user {} not found", username)
@@ -196,7 +201,7 @@ def inject_hooks(variable_scope, object, force=()):
   Said another way, if the object (or module) passed in has an 'authenticate'- then add
   a redirect in variable_scope that invokes this.
   """
-  for hook in set(KNOWN_HOOKS).intersection(object).union(force):
+  for hook in KNOWN_HOOKS.intersection(dir(object)).union(force):
     variable_scope[hook] = capture_error(getattr(object, hook))
 
 def inject_hooks_lazy(variable_scope, invokable, hooks, force=()):
@@ -207,7 +212,7 @@ def inject_hooks_lazy(variable_scope, invokable, hooks, force=()):
   invocation since the end user may not be using env variables (they may just be using
   a mod-config instantiation directly).
   """
-  for hook in set(hooks).union(force):
+  for hook in KNOWN_HOOKS.intersection(hooks).union(force):
     def shim(p, hook=hook):
       return getattr(invokable(), hook)(p)
     shim.__name__ = hook
