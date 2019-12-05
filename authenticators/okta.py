@@ -66,16 +66,16 @@ class OktaAuthenticator:
         default_email_domain=f('DEFAULT_EMAIL_DOMAIN', False),
         org=f('ORG'),
         apitoken=f('APITOKEN'),
-        module_name=f('MODULE_NAME', False, __name__),
+        auth_type=f('AUTH_TYPE', False, 'okta'),
         user_id_attr=f('USER_ID_ATTR', False, None),
     )
 
-  def __init__(self, org, apitoken, default_email_domain=None, module_name='okta',
+  def __init__(self, org, apitoken, default_email_domain=None, auth_type='okta',
                user_id_attr=None):
     self.default_email_domain = default_email_domain
     self.org = org
     self.apitoken = apitoken
-    self.module_name = module_name
+    self.auth_type = auth_type
     self.user_id_attr = user_id_attr
 
   def debug_log(self, *args, **kwargs):
@@ -171,12 +171,12 @@ class OktaAuthenticator:
     username = attributes.get('User-Name')
     if username is not None:
       if re.match('^\w+([\+\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$', username):
-        return _radius_response(radiusd.RLM_MODULE_OK, config={'Auth-Type': self.module_name})
+        return _radius_response(radiusd.RLM_MODULE_OK, config={'Auth-Type': self.auth_type})
       if self.default_email_domain:
         # it's not an email address and we have a default, so enforce ours and claim this auth for ourselves.
         self.debug_log('Authorizing: {} user lacks an email domain, applying the default of {}'.format(username, self.default_email_domain))
         username += '@{}'.format(self.default_email_domain)
-        return _radius_response(radiusd.RLM_MODULE_OK, config={'Auth-Type': self.module_name, 'User-Name': username})
+        return _radius_response(radiusd.RLM_MODULE_OK, config={'Auth-Type': self.auth_type, 'User-Name': username})
       self.debug_log("Authorize: {} we don't know what to do with", username)
       return _radius_response(radiusd.RLM_MODULE_NOOP)
     self.debug_log("Authorize: no user name provided")
