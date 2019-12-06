@@ -183,8 +183,9 @@ class OktaAuthenticator:
         continue
       r = requests.post(factor['_links']['verify']['href'], headers=self.auth_headers, json=dict(passCode=password))
       if r.status_code == 200:
-        if r['factorResult'] != 'SUCCESS':
-          self.auth_log("MFA Authentication: token type {} accepted for {}, but issued factorResult {}; this is unusable", factor['factorType'], username, r['factorResult'])
+        data = r.json()
+        if data['factorResult'] != 'SUCCESS':
+          self.auth_log("MFA Authentication: token type {} accepted for {}, but issued factorResult {}; this is unusable", factor['factorType'], username, data['factorResult'])
           continue
         self.info_log("MFA Authentication: validated {} token type {}", username, factor['factorType'])
         return radiusd.RLM_MODULE_OK
@@ -215,6 +216,9 @@ class OktaAuthenticator:
   def authorize(self, p):
     attributes = dict(p)
     username = attributes.get('User-Name')
+    if not attributes.get('User-Password'):
+      self.debug_log("Authorize: {!r} provided no password", username)
+      return self.radius_response(radiusd.RLM_MODULE_NOOP)
     if username is not None:
       if re.match('^\w+([\+\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$', username):
         return self.radius_response(radiusd.RLM_MODULE_OK, config={'Auth-Type': self.auth_type})
