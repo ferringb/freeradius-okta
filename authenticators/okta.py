@@ -2,6 +2,7 @@
 #
 # Okta Authentication
 # Ben Hecht <hechtb3@gmail.com>
+# Brian Harring <ferringb@gmail.com>
 #
 
 import requests
