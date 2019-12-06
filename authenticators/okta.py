@@ -134,6 +134,7 @@ class OktaAuthenticator:
       if self.user_id_attr:
         return self.radius_response(radiusd.RLM_MODULE_OK, config={self.user_id_attr: data['_embedded']['user']['id']})
       return self.radius_response(radiusd.RLM_MODULE_OK)
+    self.warn_log("Authenticate: got {} status code received for user {}", r.status_code, username)
     return self.radius_response(radiusd.RLM_MODULE_REJECT)
 
   def fetch_user_id(self, username):
