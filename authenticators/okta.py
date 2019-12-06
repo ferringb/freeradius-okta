@@ -183,7 +183,9 @@ class OktaAuthenticator:
         continue
       r = requests.post(factor['_links']['verify']['href'], headers=self.auth_headers, json=dict(passCode=password))
       if r.status_code == 200:
-        # body is: {"factorResult": "SUCCESS"}
+        if r['factorResult'] != 'SUCCESS':
+          self.auth_log("MFA Authentication: token type {} accepted for {}, but issued factorResult {}; this is unusable", factor['factorType'], username, r['factorResult'])
+          continue
         self.info_log("MFA Authentication: validated {} token type {}", username, factor['factorType'])
         return radiusd.RLM_MODULE_OK
       else:
