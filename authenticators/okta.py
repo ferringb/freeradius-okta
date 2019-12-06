@@ -167,7 +167,7 @@ class OktaAuthenticator:
     # this is a list of factors
     if response.status_code == 404:
       self.info_log("MFA Authentication: user {} not found", username)
-      return self.radius_response(radiusd.RLM_MODULE_REJECT, {'Reply-Message', 'user not found'})
+      return self.radius_response(radiusd.RLM_MODULE_REJECT, {'Reply-Message': 'user not found'})
 
     elif response.status_code != 200:
       self.warn_log("MFA Authentication: unexpected status code: {}, user-id {}", response.status_code, username)
