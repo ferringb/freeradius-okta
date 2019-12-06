@@ -170,6 +170,7 @@ class OktaAuthenticator:
 
     elif response.status_code != 200:
       self.warn_log("MFA Authentication: unexpected status code: {}, user-id {}", response.status_code, username)
+      return self.radius_response(radiusd.RLM_MODULE_REJECT)
 
     factors = response.json()
     self.debug_log("MFA Authentication: {} factors usable", len(factors))
