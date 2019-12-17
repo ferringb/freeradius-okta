@@ -107,7 +107,7 @@ class OktaAuthenticator:
   def info_log(self, *args, **kwargs):
     return _log(radiusd.L_INFO, *args, **kwargs)
 
-  def warn_log(self, *args, **kwarg):
+  def warn_log(self, *args, **kwargs):
     return _log(radiusd.L_WARN, *args, **kwargs)
 
   def okta_request(self, method_type, uri, *args, **kwargs):
