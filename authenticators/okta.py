@@ -60,12 +60,12 @@ class OktaAuthenticator:
     :param env_prefix: If given, look for ${PREFIX}_OKTA.* variables.  If not given, just look for OKTA_.*
     """
     prefix = '' if prefix is None else '{}_'.format(prefix)
-    def f(key, required=True, default=None, overrides=kwargs):
+    def f(key, required=True, default=None, overrides=kwargs, value_type=str):
       if key.lower() in overrides:
         return overrides[key.lower()]
       key = '{}OKTA_{}'.format(prefix, key)
       try:
-        return os.environ[key]
+        return value_type(os.environ[key])
       except KeyError:
         if required:
           raise KeyError("environment variable {} isn't defined, but is mandatory".format(key))
@@ -77,15 +77,17 @@ class OktaAuthenticator:
         apitoken=f('APITOKEN'),
         auth_type=f('AUTH_TYPE', False, 'okta'),
         user_id_attr=f('USER_ID_ATTR', False, None),
+        request_timeout=f('REQUEST_TIMEOUT', False, 5, value_type=float),
     )
 
   def __init__(self, org, apitoken, default_email_domain=None, auth_type='okta',
-               user_id_attr=None):
+               user_id_attr=None, request_timeout=5.0):
     self.default_email_domain = default_email_domain
     self.org = org
     self.apitoken = apitoken
     self.auth_type = auth_type
     self.user_id_attr = user_id_attr
+    self.request_timeout = request_timeout
 
   @staticmethod
   def radius_response(value, reply=(), config=()):
@@ -113,6 +115,7 @@ class OktaAuthenticator:
   def okta_request(self, method_type, uri, *args, **kwargs):
     headers = kwargs['headers'] = kwargs.get('headers', {}).copy()
     headers.update(self.auth_headers)
+    kwargs.setdefault('timeout', self.request_timeout)
     func = getattr(requests, method_type.lower())
     return func('https://{}/{}'.format(self.org, uri.lstrip('/')), *args, **kwargs)
 
